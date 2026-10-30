@@ -314,6 +314,16 @@ if ! wait_active; then
   exit 1
 fi
 
+# 防止二进制一启动就崩溃、systemd 又立刻拉起造成“看似 active”
+sleep 2
+if ! "${SUDO[@]}" systemctl is-active --quiet "$SERVICE"; then
+  warn "服务启动后不稳定，自动回滚"
+  "${SUDO[@]}" systemctl status "$SERVICE" --no-pager -l || true
+  "${SUDO[@]}" journalctl -u "$SERVICE" -n 50 --no-pager || true
+  rollback_to "$BACKUP"
+  exit 1
+fi
+
 log "服务已启动"
 "${SUDO[@]}" systemctl status "$SERVICE" --no-pager -l | head -20 || true
 
