@@ -137,7 +137,9 @@ run() {
 }
 
 confirm() {
-  (( ASSUME_YES )) && return 0
+  if (( ASSUME_YES )); then
+    return 0
+  fi
   [[ -t 0 ]] || die "非交互环境请加 --yes"
   local answer
   read -r -p "$1 [y/N] " answer
@@ -148,11 +150,17 @@ build_binary() {
   [[ -d "$ROOT_DIR/bin" ]] || mkdir -p "$ROOT_DIR/bin"
 
   local env_args=(CGO_ENABLED=0 GOOS="$GOOS" GOARCH="$GOARCH")
-  [[ -n "$GOAMD64_OPT" ]] && env_args+=(GOAMD64="$GOAMD64_OPT")
-  [[ -n "${GOARM:-}" ]] && env_args+=(GOARM="$GOARM")
+  if [[ -n "$GOAMD64_OPT" ]]; then
+    env_args+=(GOAMD64="$GOAMD64_OPT")
+  fi
+  if [[ -n "${GOARM:-}" ]]; then
+    env_args+=(GOARM="$GOARM")
+  fi
 
   local tag_args=()
-  [[ -n "$BUILD_TAGS" ]] && tag_args=(-tags "$BUILD_TAGS")
+  if [[ -n "$BUILD_TAGS" ]]; then
+    tag_args=(-tags "$BUILD_TAGS")
+  fi
 
   log "编译 $BUILD_OUT"
   log "版本 $VERSION"
@@ -160,7 +168,9 @@ build_binary() {
 }
 
 test_config() {
-  (( SKIP_CONFIG_TEST )) && return 0
+  if (( SKIP_CONFIG_TEST )); then
+    return 0
+  fi
   [[ -r "$CONFIG_DIR/config.yaml" ]] || die "读不到 $CONFIG_DIR/config.yaml"
 
   log "测试配置 $CONFIG_DIR/config.yaml"

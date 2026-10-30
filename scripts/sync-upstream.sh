@@ -129,9 +129,15 @@ if (( DRY_RUN )); then
   else
     echo "将执行: git merge --no-ff --no-edit $TARGET"
   fi
-  (( RUN_TEST )) && echo "将执行: go build ./... && go test ./adapter/... ./tunnel/... ./dns/... ./rules/..."
-  (( FULL_TEST )) && echo "将执行: go test ./..."
-  (( PUSH )) && echo "将执行: git push origin $CURRENT_BRANCH"
+  if (( RUN_TEST )); then
+    echo "将执行: go build ./... && go test ./adapter/... ./tunnel/... ./dns/... ./rules/..."
+  fi
+  if (( FULL_TEST )); then
+    echo "将执行: go test ./..."
+  fi
+  if (( PUSH )); then
+    echo "将执行: git push origin $CURRENT_BRANCH"
+  fi
   exit 0
 fi
 
