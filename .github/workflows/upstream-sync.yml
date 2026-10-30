@@ -11,6 +11,14 @@ on:
         options:
           - Meta
           - Alpha
+      base_branch:
+        description: "Branch that receives the sync PR"
+        required: true
+        default: "dev"
+        type: choice
+        options:
+          - dev
+          - main
       auto_merge:
         description: "Enable auto-merge after this workflow passes"
         required: false
@@ -28,10 +36,10 @@ jobs:
   sync:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout dev
+      - name: Checkout base branch
         uses: actions/checkout@v4
         with:
-          ref: dev
+          ref: ${{ inputs.base_branch || 'dev' }}
           fetch-depth: 0
 
       - name: Setup Go
@@ -49,12 +57,12 @@ jobs:
       - name: Fetch upstream
         run: |
           git fetch --no-tags upstream \
-            "refs/heads/${{ inputs.channel }}:refs/remotes/upstream/${{ inputs.channel }}"
+            "refs/heads/${{ inputs.channel || 'Meta' }}:refs/remotes/upstream/${{ inputs.channel || 'Meta' }}"
 
       - name: Check whether already synced
         id: check
         run: |
-          if git merge-base --is-ancestor "upstream/${{ inputs.channel }}" HEAD; then
+          if git merge-base --is-ancestor "upstream/${{ inputs.channel || 'Meta' }}" HEAD; then
             echo "up_to_date=true" >> "$GITHUB_OUTPUT"
           else
             echo "up_to_date=false" >> "$GITHUB_OUTPUT"
@@ -63,10 +71,10 @@ jobs:
       - name: Create sync branch
         if: steps.check.outputs.up_to_date == 'false'
         run: |
-          BRANCH="sync/upstream-${{ inputs.channel }}-$(date +%Y%m%d-%H%M%S)"
+          BRANCH="sync/upstream-${{ inputs.channel || 'Meta' }}-${{ inputs.base_branch || 'dev' }}-$(date +%Y%m%d-%H%M%S)"
           echo "SYNC_BRANCH=$BRANCH" >> "$GITHUB_ENV"
           git checkout -b "$BRANCH"
-          git merge --no-ff --no-edit "upstream/${{ inputs.channel }}"
+          git merge --no-ff --no-edit "upstream/${{ inputs.channel || 'Meta' }}"
 
       - name: Build
         if: steps.check.outputs.up_to_date == 'false'
@@ -83,13 +91,13 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           branch: ${{ env.SYNC_BRANCH }}
-          base: dev
-          title: "chore: sync upstream ${{ inputs.channel }}"
+          base: ${{ inputs.base_branch || 'dev' }}
+          title: "chore: sync upstream ${{ inputs.channel || 'Meta' }} into ${{ inputs.base_branch || 'dev' }}"
           body: |
-            Automated upstream sync from `MetaCubeX/mihomo` `${{ inputs.channel }}`.
+            Automated upstream sync from `MetaCubeX/mihomo` `${{ inputs.channel || 'Meta' }}`.
 
-            - Base: `dev`
-            - Upstream: `${{ inputs.channel }}`
+            - Base: `${{ inputs.base_branch || 'dev' }}`
+            - Upstream: `${{ inputs.channel || 'Meta' }}`
 
             This workflow already ran `go build ./...` and the fast test suite.
             Please review semantic changes before merging.
