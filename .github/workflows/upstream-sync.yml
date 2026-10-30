@@ -1,0 +1,103 @@
+name: Upstream Sync
+
+on:
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: "Upstream branch to sync"
+        required: true
+        default: "Meta"
+        type: choice
+        options:
+          - Meta
+          - Alpha
+      auto_merge:
+        description: "Enable auto-merge after this workflow passes"
+        required: false
+        default: false
+        type: boolean
+  # 需要每天自动检查时取消注释。
+  # schedule:
+  #   - cron: "0 3 * * *"
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout dev
+        uses: actions/checkout@v4
+        with:
+          ref: dev
+          fetch-depth: 0
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.x"
+          cache: true
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote add upstream https://github.com/MetaCubeX/mihomo.git
+
+      - name: Fetch upstream
+        run: |
+          git fetch --no-tags upstream \
+            "refs/heads/${{ inputs.channel }}:refs/remotes/upstream/${{ inputs.channel }}"
+
+      - name: Check whether already synced
+        id: check
+        run: |
+          if git merge-base --is-ancestor "upstream/${{ inputs.channel }}" HEAD; then
+            echo "up_to_date=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "up_to_date=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create sync branch
+        if: steps.check.outputs.up_to_date == 'false'
+        run: |
+          BRANCH="sync/upstream-${{ inputs.channel }}-$(date +%Y%m%d-%H%M%S)"
+          echo "SYNC_BRANCH=$BRANCH" >> "$GITHUB_ENV"
+          git checkout -b "$BRANCH"
+          git merge --no-ff --no-edit "upstream/${{ inputs.channel }}"
+
+      - name: Build
+        if: steps.check.outputs.up_to_date == 'false'
+        run: go build ./...
+
+      - name: Test
+        if: steps.check.outputs.up_to_date == 'false'
+        run: go test ./adapter/... ./tunnel/... ./dns/... ./rules/...
+
+      - name: Create pull request
+        id: cpr
+        if: steps.check.outputs.up_to_date == 'false'
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          branch: ${{ env.SYNC_BRANCH }}
+          base: dev
+          title: "chore: sync upstream ${{ inputs.channel }}"
+          body: |
+            Automated upstream sync from `MetaCubeX/mihomo` `${{ inputs.channel }}`.
+
+            - Base: `dev`
+            - Upstream: `${{ inputs.channel }}`
+
+            This workflow already ran `go build ./...` and the fast test suite.
+            Please review semantic changes before merging.
+          delete-branch: true
+
+      - name: Enable auto-merge
+        if: inputs.auto_merge && steps.cpr.outputs.pull-request-number != ''
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh pr merge "${{ steps.cpr.outputs.pull-request-number }}" --auto --merge
